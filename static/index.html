@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CV Recommendation System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            position: relative;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        /* Background with lion image - fallback to dark gradient if image not found */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #1a1a1a;
+            background-image: 
+                linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
+                url('/static/lion-background.jpg'),
+                radial-gradient(circle at 20% 50%, rgba(139, 69, 19, 0.4) 0%, transparent 50%),
+                radial-gradient(circle at 80% 50%, rgba(184, 134, 11, 0.3) 0%, transparent 50%),
+                linear-gradient(135deg, #2c1810 0%, #1a1a1a 100%);
+            background-size: cover, cover, auto, auto, auto;
+            background-position: center, center, 20% 50%, 80% 50%, center;
+            background-attachment: fixed, fixed, fixed, fixed, fixed;
+            background-repeat: no-repeat;
+            z-index: -1;
+        }
+.container {
+    width: 100%;
+    max-width: 1200px;
+    background: transparent; /* fully see-through */
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: none; /* optional: remove dark shadow if it dims background */
+    backdrop-filter: none; /* remove blur if you want clear background */
+    margin: 20px 0;
+}
+
+
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #ffd700;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #cccccc;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .search-section {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #ffd700;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid rgba(255, 215, 0, 0.3);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #ffd700;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px dashed rgba(255, 215, 0, 0.3);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+            cursor: pointer;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 15px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: #ffffff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #000000;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 215, 0, 0.4);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #2ecc71, #27ae60);
+        }
+
+        .btn-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(46, 204, 113, 0.4);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+        }
+
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(243, 156, 18, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results-section {
+            margin-top: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            display: none;
+        }
+
+        .results-section.active {
+            display: block;
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .results-header h2 {
+            color: #ffd700;
+        }
+
+        .close-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: #ffffff;
+            padding: 5px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        pre {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            max-height: 600px;
+            overflow-y: auto;
+            color: #00ff00;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Search Results Styling */
+        .results-summary {
+            background: rgba(255, 215, 0, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            border: 2px solid rgba(255, 215, 0, 0.3);
+        }
+
+        .results-summary h3 {
+            color: #ffd700;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .summary-stat {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .summary-stat-label {
+            font-size: 0.85em;
+            color: #cccccc;
+            margin-bottom: 5px;
+        }
+
+        .summary-stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #ffd700;
+        }
+
+        .candidates-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .candidate-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid rgba(255, 215, 0, 0.2);
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .candidate-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(255, 215, 0, 0.3);
+            border-color: rgba(255, 215, 0, 0.5);
+        }
+
+        .candidate-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid rgba(255, 215, 0, 0.2);
+        }
+
+        .candidate-rank {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #000000;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2em;
+            flex-shrink: 0;
+        }
+
+        .candidate-scores {
+            text-align: right;
+        }
+
+        .similarity-score {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #ffd700;
+            margin-bottom: 5px;
+        }
+
+        .score-quality {
+            font-size: 0.85em;
+            padding: 4px 10px;
+            border-radius: 12px;
+            display: inline-block;
+        }
+
+        .score-quality.very_relevant {
+            background: rgba(46, 204, 113, 0.3);
+            color: #2ecc71;
+        }
+
+        .score-quality.relevant {
+            background: rgba(52, 152, 219, 0.3);
+            color: #3498db;
+        }
+
+        .score-quality.moderately_relevant {
+            background: rgba(243, 156, 18, 0.3);
+            color: #f39c12;
+        }
+
+        .score-quality.low_relevance {
+            background: rgba(231, 76, 60, 0.3);
+            color: #e74c3c;
+        }
+
+        .candidate-info {
+            margin-bottom: 15px;
+        }
+
+        .candidate-name {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #ffffff;
+            margin-bottom: 10px;
+        }
+
+        .info-section {
+            margin-bottom: 15px;
+        }
+
+        .info-section-title {
+            color: #ffd700;
+            font-weight: 600;
+            font-size: 0.95em;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .info-section-content {
+            color: #e0e0e0;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+
+        .skills-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 5px;
+        }
+
+        .skill-tag {
+            background: rgba(255, 215, 0, 0.2);
+            color: #ffd700;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.85em;
+            border: 1px solid rgba(255, 215, 0, 0.3);
+        }
+
+        .keyword-matches {
+            background: rgba(46, 204, 113, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            border-left: 3px solid #2ecc71;
+        }
+
+        .keyword-matches-title {
+            color: #2ecc71;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .keyword-tag {
+            background: rgba(46, 204, 113, 0.2);
+            color: #2ecc71;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 0.8em;
+            display: inline-block;
+            margin: 3px;
+        }
+
+        .boost-indicator {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(52, 152, 219, 0.3);
+            color: #3498db;
+            padding: 4px 8px;
+            border-radius: 8px;
+            font-size: 0.75em;
+            font-weight: 600;
+        }
+
+        .experience-text {
+            max-height: 150px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .experience-text::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .experience-text::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+
+        .experience-text::-webkit-scrollbar-thumb {
+            background: rgba(255, 215, 0, 0.3);
+            border-radius: 3px;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #cccccc;
+        }
+
+        .no-results-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .json-toggle {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 215, 0, 0.3);
+            color: #ffffff;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .json-toggle:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .json-view {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .json-view.active {
+            display: block;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 215, 0, 0.3);
+            border-top: 4px solid #ffd700;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            color: #ffd700;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert.active {
+            display: block;
+        }
+
+        .alert-success {
+            background: rgba(46, 204, 113, 0.3);
+            border: 2px solid #2ecc71;
+            color: #ffffff;
+        }
+
+        .alert-error {
+            background: rgba(231, 76, 60, 0.3);
+            border: 2px solid #e74c3c;
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1> CV Recommendation System</h1>
+        <p class="subtitle">Experience-focused CV matching and recommendation platform</p>
+
+        <div id="alert" class="alert"></div>
+
+        <!-- Search Section -->
+        <div class="search-section">
+            <h2 style="color: #ffd700; margin-bottom: 20px;">🔍 Search Candidates</h2>
+            <div class="form-group">
+                <label for="query">Search Query:</label>
+                <textarea id="query" placeholder="Enter your search query (e.g., 'Python developer with 5 years experience')"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="topK">Top K Results:</label>
+                <input type="number" id="topK" value="10" min="1" max="100" placeholder="Number of results to return">
+            </div>
+            <div class="form-group">
+                <label for="minSimilarity">Minimum Similarity Score (0.0-1.0):</label>
+                <input type="number" id="minSimilarity" value="0.3" min="0" max="1" step="0.1" placeholder="Minimum similarity threshold">
+                <small style="color: #cccccc; font-size: 0.9em;">Filter out low-quality matches. Higher = more strict (default: 0.3)</small>
+            </div>
+            <button class="btn-primary" onclick="searchCandidates()">Search Candidates</button>
+        </div>
+
+        <!-- Endpoint Buttons -->
+        <div class="button-group">
+            <button class="btn-secondary" onclick="showUploadBatch()">Upload CV Batch</button>
+            <button class="btn-info" onclick="getStats()">Get Statistics</button>
+            <button class="btn-warning" onclick="getAllCVs()">View All CVs</button>
+            <button class="btn-danger" onclick="clearAllData()">Clear All Data</button>
+            <button class="btn-secondary" onclick="showDataPreprocessing()">Data Preprocessing</button>
+        </div>
+
+        <!-- File Upload Modal (hidden by default) -->
+        <div id="uploadModal" style="display: none; margin-top: 30px; background: rgba(255, 255, 255, 0.1); padding: 30px; border-radius: 15px;">
+            <h2 style="color: #ffd700; margin-bottom: 20px;" id="uploadTitle">Upload File</h2>
+            <div class="form-group">
+                <label for="fileInput">Select ZIP File:</label>
+                <input type="file" id="fileInput" accept=".zip">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-primary" onclick="uploadFile()">Upload</button>
+                <button class="btn-secondary" onclick="closeUploadModal()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 10px;">Processing...</p>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section" id="results">
+            <div class="results-header">
+                <h2>Résultats de la recherche</h2>
+                <button class="close-btn" onclick="closeResults()">×</button>
+            </div>
+            <div id="resultsContent"></div>
+            <button class="json-toggle" onclick="toggleJsonView()">Afficher/Masquer JSON brut</button>
+            <div class="json-view" id="jsonView">
+                <pre id="jsonContent"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/cv';
+        let currentEndpoint = '';
+
+        function showAlert(message, type = 'success') {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.className = `alert alert-${type} active`;
+            setTimeout(() => {
+                alert.classList.remove('active');
+            }, 5000);
+        }
+
+        function showLoading(show = true) {
+            document.getElementById('loading').classList.toggle('active', show);
+        }
+
+        function showResults(data) {
+            const results = document.getElementById('results');
+            const resultsContent = document.getElementById('resultsContent');
+            const jsonContent = document.getElementById('jsonContent');
+            const jsonToggle = document.querySelector('.json-toggle');
+            const jsonView = document.getElementById('jsonView');
+            
+            // Store JSON for toggle view
+            jsonContent.textContent = JSON.stringify(data, null, 2);
+            
+            // Check if this is search results data
+            if (data.recommendations && Array.isArray(data.recommendations)) {
+                resultsContent.innerHTML = renderSearchResults(data);
+                // Show JSON toggle button for search results
+                jsonToggle.style.display = 'block';
+                jsonView.classList.remove('active');
+            } else {
+                // For other data types, show JSON and hide toggle
+                resultsContent.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                jsonToggle.style.display = 'none';
+                jsonView.classList.remove('active');
+            }
+            
+            results.classList.add('active');
+        }
+
+        function toggleJsonView() {
+            const jsonView = document.getElementById('jsonView');
+            jsonView.classList.toggle('active');
+        }
+
+        function renderSearchResults(data) {
+            let html = '';
+            
+            // Summary Section
+            html += '<div class="results-summary">';
+            html += '<h3>📊 Résumé de la recherche</h3>';
+            html += '<div class="summary-stats">';
+            html += `<div class="summary-stat">
+                <div class="summary-stat-label">Candidats trouvés</div>
+                <div class="summary-stat-value">${data.total_candidates_found || 0}</div>
+            </div>`;
+            html += `<div class="summary-stat">
+                <div class="summary-stat-label">Filtrés</div>
+                <div class="summary-stat-value">${data.total_filtered_out || 0}</div>
+            </div>`;
+            if (data.score_statistics) {
+                html += `<div class="summary-stat">
+                    <div class="summary-stat-label">Score moyen</div>
+                    <div class="summary-stat-value">${(data.score_statistics.average * 100).toFixed(1)}%</div>
+                </div>`;
+                html += `<div class="summary-stat">
+                    <div class="summary-stat-label">Score max</div>
+                    <div class="summary-stat-value">${(data.score_statistics.maximum * 100).toFixed(1)}%</div>
+                </div>`;
+            }
+            html += '</div>';
+            html += `<div style="color: #cccccc; font-size: 0.9em; margin-top: 10px;">
+                <strong>Requête:</strong> "${data.query || 'N/A'}" | 
+                <strong>Top K:</strong> ${data.top_k_requested || 'N/A'} | 
+                <strong>Seuil min:</strong> ${data.min_similarity_threshold || 'N/A'}
+            </div>`;
+            html += '</div>';
+
+            // Candidates Grid
+            if (data.recommendations && data.recommendations.length > 0) {
+                html += '<div class="candidates-grid">';
+                data.recommendations.forEach(rec => {
+                    html += renderCandidateCard(rec);
+                });
+                html += '</div>';
+            } else {
+                html += '<div class="no-results">';
+                html += '<div class="no-results-icon">🔍</div>';
+                html += '<h3>Aucun candidat trouvé</h3>';
+                html += '<p>Essayez de modifier vos critères de recherche ou de réduire le seuil de similarité minimum.</p>';
+                html += '</div>';
+            }
+
+            return html;
+        }
+
+        function renderCandidateCard(rec) {
+            const candidate = rec.candidate || {};
+            const fullCv = candidate.full_cv_details || {};
+            const scorePercent = (rec.similarity_score * 100).toFixed(1);
+            const boostedScorePercent = (rec.boosted_similarity_score * 100).toFixed(1);
+            
+            let html = '<div class="candidate-card">';
+            
+            // Boost indicator
+            if (rec.boost > 0) {
+                html += `<div class="boost-indicator">+${(rec.boost * 100).toFixed(1)}% boost</div>`;
+            }
+            
+            // Header with rank and score
+            html += '<div class="candidate-header">';
+            html += `<div class="candidate-rank">#${rec.rank}</div>`;
+            html += '<div class="candidate-scores">';
+            html += `<div class="similarity-score">${scorePercent}%</div>`;
+            html += `<div class="score-quality ${rec.score_quality || 'low_relevance'}">`;
+            const qualityLabels = {
+                'very_relevant': 'Très pertinent',
+                'relevant': 'Pertinent',
+                'moderately_relevant': 'Modérément pertinent',
+                'low_relevance': 'Faible pertinence'
+            };
+            html += qualityLabels[rec.score_quality] || 'Non classé';
+            html += '</div>';
+            if (rec.boost > 0) {
+                html += `<div style="font-size: 0.8em; color: #3498db; margin-top: 5px;">Boosté: ${boostedScorePercent}%</div>`;
+            }
+            html += '</div>';
+            html += '</div>';
+
+            // Candidate name
+            const fullName = fullCv.fullName || candidate.fullName || 'Nom non disponible';
+            html += `<div class="candidate-name">${escapeHtml(fullName)}</div>`;
+
+            // Summary/Experience
+            if (candidate.summaryText || candidate.experienceDetails) {
+                html += '<div class="info-section">';
+                html += '<div class="info-section-title">📝 Résumé / Expérience</div>';
+                html += '<div class="info-section-content experience-text">';
+                html += escapeHtml(candidate.summaryText || candidate.experienceDetails || 'Aucune information disponible');
+                html += '</div>';
+                html += '</div>';
+            }
+
+            // Years of experience
+            if (candidate.totalYearsExperience !== null && candidate.totalYearsExperience !== undefined) {
+                html += '<div class="info-section">';
+                html += '<div class="info-section-title">⏱️ Années d\'expérience</div>';
+                html += `<div class="info-section-content">${candidate.totalYearsExperience} ans</div>`;
+                html += '</div>';
+            }
+
+            // Hard Skills
+            const hardSkills = candidate.hardSkills || fullCv.hardSkills || [];
+            if (hardSkills.length > 0) {
+                html += '<div class="info-section">';
+                html += '<div class="info-section-title">💻 Compétences techniques</div>';
+                html += '<div class="skills-list">';
+                hardSkills.slice(0, 10).forEach(skill => {
+                    html += `<span class="skill-tag">${escapeHtml(skill)}</span>`;
+                });
+                if (hardSkills.length > 10) {
+                    html += `<span class="skill-tag">+${hardSkills.length - 10} autres</span>`;
+                }
+                html += '</div>';
+                html += '</div>';
+            }
+
+            // Soft Skills
+            const softSkills = candidate.softSkills || fullCv.softSkills || [];
+            if (softSkills.length > 0) {
+                html += '<div class="info-section">';
+                html += '<div class="info-section-title">🤝 Compétences comportementales</div>';
+                html += '<div class="skills-list">';
+                softSkills.slice(0, 8).forEach(skill => {
+                    html += `<span class="skill-tag">${escapeHtml(skill)}</span>`;
+                });
+                if (softSkills.length > 8) {
+                    html += `<span class="skill-tag">+${softSkills.length - 8} autres</span>`;
+                }
+                html += '</div>';
+                html += '</div>';
+            }
+
+            // Education
+            const education = candidate.education || fullCv.education || [];
+            if (education.length > 0) {
+                html += '<div class="info-section">';
+                html += '<div class="info-section-title">🎓 Formation</div>';
+                html += '<div class="info-section-content">';
+                if (typeof education === 'string') {
+                    html += escapeHtml(education);
+                } else if (Array.isArray(education)) {
+                    education.slice(0, 3).forEach(edu => {
+                        if (typeof edu === 'string') {
+                            html += `• ${escapeHtml(edu)}<br>`;
+                        } else if (edu.degree || edu.school) {
+                            html += `• ${escapeHtml(edu.degree || '')} - ${escapeHtml(edu.school || '')}<br>`;
+                        }
+                    });
+                }
+                html += '</div>';
+                html += '</div>';
+            }
+
+            // Contact info
+            if (fullCv.email || fullCv.phone) {
+                html += '<div class="info-section">';
+                html += '<div class="info-section-title">📧 Contact</div>';
+                html += '<div class="info-section-content">';
+                if (fullCv.email) html += `📧 ${escapeHtml(fullCv.email)}<br>`;
+                if (fullCv.phone) html += `📱 ${escapeHtml(fullCv.phone)}`;
+                html += '</div>';
+                html += '</div>';
+            }
+
+            // Keyword matches
+            if (rec.keyword_matches && rec.keyword_matches.length > 0) {
+                html += '<div class="keyword-matches">';
+                html += '<div class="keyword-matches-title">✅ Mots-clés correspondants</div>';
+                rec.keyword_matches.forEach(keyword => {
+                    html += `<span class="keyword-tag">${escapeHtml(keyword)}</span>`;
+                });
+                html += '</div>';
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function closeResults() {
+            document.getElementById('results').classList.remove('active');
+        }
+
+        async function searchCandidates() {
+            const query = document.getElementById('query').value.trim();
+            const topK = document.getElementById('topK').value;
+            const minSimilarity = document.getElementById('minSimilarity').value;
+
+            if (!query) {
+                showAlert('Please enter a search query', 'error');
+                return;
+            }
+
+            if (!topK || topK < 1 || topK > 100) {
+                showAlert('Top K must be between 1 and 100', 'error');
+                return;
+            }
+
+            if (!minSimilarity || minSimilarity < 0 || minSimilarity > 1) {
+                showAlert('Minimum similarity must be between 0.0 and 1.0', 'error');
+                return;
+            }
+
+            showLoading(true);
+            try {
+                const formData = new FormData();
+                formData.append('query', query);
+                formData.append('top_k', topK);
+                formData.append('min_similarity', minSimilarity);
+
+                const response = await fetch(`${API_BASE}/recommend-candidates`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResults(data);
+                    const msg = `Found ${data.total_candidates_found} candidates`;
+                    const filteredMsg = data.total_filtered_out > 0 
+                        ? ` (${data.total_filtered_out} filtered out by threshold)`
+                        : '';
+                    const scoreMsg = data.score_statistics 
+                        ? ` | Avg Score: ${data.score_statistics.average}`
+                        : '';
+                    showAlert(msg + filteredMsg + scoreMsg, 'success');
+                } else {
+                    showAlert(data.detail || 'Error searching candidates', 'error');
+                }
+            } catch (error) {
+                showAlert(`Error: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function showUploadBatch() {
+            currentEndpoint = 'upload-batch';
+            document.getElementById('uploadTitle').textContent = 'Upload CV Batch (ZIP)';
+            document.getElementById('uploadModal').style.display = 'block';
+        }
+
+        function showDataPreprocessing() {
+            currentEndpoint = 'data-preprocessing';
+            document.getElementById('uploadTitle').textContent = 'Data Preprocessing - Extract Phone Numbers (ZIP)';
+            document.getElementById('uploadModal').style.display = 'block';
+        }
+
+        function closeUploadModal() {
+            document.getElementById('uploadModal').style.display = 'none';
+            document.getElementById('fileInput').value = '';
+            currentEndpoint = '';
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showAlert('Please select a file', 'error');
+                return;
+            }
+
+            if (!file.name.endsWith('.zip')) {
+                showAlert('Please select a ZIP file', 'error');
+                return;
+            }
+
+            showLoading(true);
+            try {
+                const formData = new FormData();
+                formData.append('zip_file', file);
+
+                const endpoint = currentEndpoint === 'data-preprocessing' 
+                    ? `${API_BASE}/data-preprocessing` 
+                    : `${API_BASE}/upload-cv-batch`;
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResults(data);
+                    showAlert('File uploaded successfully!', 'success');
+                    closeUploadModal();
+                } else {
+                    showAlert(data.detail || 'Error uploading file', 'error');
+                }
+            } catch (error) {
+                showAlert(`Error: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function getStats() {
+            showLoading(true);
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResults(data);
+                    showAlert('Statistics retrieved successfully', 'success');
+                } else {
+                    showAlert(data.detail || 'Error fetching statistics', 'error');
+                }
+            } catch (error) {
+                showAlert(`Error: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function getAllCVs() {
+            showLoading(true);
+            try {
+                const response = await fetch(`${API_BASE}/`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResults(data);
+                    showAlert('CVs retrieved successfully', 'success');
+                } else {
+                    showAlert(data.detail || 'Error fetching CVs', 'error');
+                }
+            } catch (error) {
+                showAlert(`Error: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function clearAllData() {
+            if (!confirm('Are you sure you want to clear all data? This action cannot be undone.')) {
+                return;
+            }
+
+            showLoading(true);
+            try {
+                const response = await fetch(`${API_BASE}/clear-all`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResults(data);
+                    showAlert('All data cleared successfully', 'success');
+                } else {
+                    showAlert(data.detail || 'Error clearing data', 'error');
+                }
+            } catch (error) {
+                showAlert(`Error: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+    </script>
+</body>
+</html>
+
