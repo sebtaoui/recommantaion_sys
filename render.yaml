@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: cv-recommendation-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    envVars:
+      # MongoDB URI - Use MongoDB Atlas (free tier available)
+      # Get your connection string from: https://www.mongodb.com/cloud/atlas
+      # Format: mongodb+srv://username:password@cluster.mongodb.net/
+      - key: MONGO_URI
+        sync: false
+        value: mongodb+srv://user:pass@cluster.mongodb.net/
+      - key: DB_NAME
+        value: cv_recommendation_db
+      # Add your API keys in Render dashboard under Environment Variables
+      # - key: TOGETHER_API_KEY
+      #   sync: false
+      #   value: your_api_key_here
+      # - key: TOGETHER_MODEL
+      #   value: meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo
+      # - key: EMBEDDING_PROVIDER
+      #   value: local
+      # - key: EMBEDDING_MODEL
+      #   value: sentence-transformers/all-mpnet-base-v2
+    healthCheckPath: /
+    autoDeploy: true
+
