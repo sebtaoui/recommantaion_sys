@@ -30,6 +30,24 @@ class ProfessionalExperience(BaseModel):
     description: Optional[str] = None
     yearsOfExperience: Optional[float] = None
 
+    @field_validator("yearsOfExperience", mode="before")
+    @classmethod
+    def validate_years_of_experience(cls, value):
+        """Convert string 'null' or empty strings to None, and handle numeric strings."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value_lower = value.lower().strip()
+            if value_lower in ('null', 'none', ''):
+                return None
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        return None
+
 
 # ----------------------------
 # 🔹 CVInfo (Main Model)
@@ -77,6 +95,24 @@ class CVSummary(BaseModel):
     summaryText: Optional[str] = None
     totalYearsExperience: Optional[float] = None
     experienceDetails: Optional[str] = None
+
+    @field_validator("totalYearsExperience", mode="before")
+    @classmethod
+    def validate_total_years_experience(cls, value):
+        """Convert string 'null' or empty strings to None, and handle numeric strings."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value_lower = value.lower().strip()
+            if value_lower in ('null', 'none', ''):
+                return None
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        return None
 
 
 # ----------------------------

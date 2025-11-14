@@ -1,4 +1,60 @@
-# CV Processing Pipeline
+# CV Recommendation System – Architecture & Fonctionnalités
+
+Ce projet offre une chaîne complète pour l’ingestion de CV, leur structuration par LLM et une recommandation hybride combinant recherche vectorielle et re-ranking BERT. L’objectif est de proposer rapidement une short-list de candidats pertinents à partir d’une requête textuelle (job description, profil cible, etc.).
+
+## Architecture globale
+- **Backend FastAPI** : expose les endpoints REST, sert l’interface web statique et orchestre le pipeline.
+- **Services d’ingestion** : extraction multi-format (PDF, DOCX, images), prompts LLM spécialisés, validation Pydantic.
+- **Stockage** : MongoDB pour les documents structurés et les résumés orientés matching.
+- **Recherche vectorielle** : SentenceTransformer (SBERT) + index FAISS persistant (`cv_index.faiss` + `id_map.pkl`). Prise en charge des embeddings locaux ou hébergés via Together.ai.
+- **Re-ranking** : cross-encoder BERT (`ms-marco-MiniLM-L-6-v2`) avec cache LRU pour accélérer les requêtes récurrentes.
+- **Interface web** : formulaire JSON aligné sur l’API, visualisation détaillée des scores et diagnostics.
+
+## Principales fonctionnalités
+- **Ingestion batch** (`POST /api/cv/upload-cv-batch`) : import d’un ZIP de CV, structuration, enregistrement Mongo et indexation FAISS (OCR multi-langue + contrôles qualité).
+- **Recommandation** (`POST /api/cv/recommend-candidates`) : pipeline en cinq étapes (pré-traitement requête → SBERT/FAISS → re-ranking cross-encoder → fusion des scores → Top 10).
+- **Analyse LLM orientée expérience** : résumé analytique, estimation automatique du niveau (junior/mid/senior), extraction hard/soft skills.
+- **Interface front** : saisie JSON (poids mots-clés, importance expérience), affichage des composantes de score et export JSON brut.
+- **Administration & data cleaning** : stats, purge complète, extraction de numéros de téléphone.
+
+## Flux de traitement – Vue rapide
+1. **Upload ZIP** → extraction texte + prompts LLM → stockage Mongo + embeddings FAISS.
+2. **Requête utilisateur** → normalisation & analyse → FAISS Top K (configurable) → re-ranking cross-encoder.
+3. **Fusion des scores** (embedding, cross-encoder, mots-clés, expérience) → Top 10 retourné avec diagnostics complets.
+
+---
+
+## Configuration essentielle
+
+| Variable | Rôle | Valeur par défaut |
+|----------|------|-------------------|
+| `MONGO_URI`, `DB_NAME` | Connexion MongoDB | `mongodb://localhost:27017/`, `cv_recommendation_db` |
+| `TOGETHER_API_KEY`, `TOGETHER_MODEL` | Accès LLM pour la structuration | `meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo` |
+| `EMBEDDING_MODEL` | Modèle SentenceTransformer ou Together.ai | `sentence-transformers/all-mpnet-base-v2` |
+| `RERANKER_MODEL` | Cross-encoder de re-ranking | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
+| `FAISS_PRESELECTION_K` | Taille pré-sélection FAISS | `100` |
+| `FUSION_*` | Poids des composantes (embedding / cross-encoder / keywords / expérience) | `0.45 / 0.45 / 0.05 / 0.05` |
+| `EMBEDDING_PROVIDER` | `local` ou `together` | `local` |
+| `OCR_LANGUAGES` | Langues OCR Tesseract (codes concaténés) | `eng+fra` |
+| `OCR_MIN_CONFIDENCE` | Seuil de confiance OCR (0-100) | `35.0` |
+| `CALIBRATION_PROFILE_PATH` | Profil de calibration JSON | `calibration/weights.json` |
+
+Les poids sont normalisés automatiquement et peuvent être ajustés à l’aide d’un jeu d’or (précision@K, nDCG). L’événement `startup_event` chauffe les modèles pour limiter la latence du premier appel, et un cache LRU évite de recalculer les scores cross-encoder répétés.
+
+### Calibration guidée
+Un script dédié permet de calibrer automatiquement les poids sur un corpus annoté :
+
+```bash
+python scripts/calibrate_weights.py --dataset data/annotated_samples.jsonl --grid-step 0.05
+```
+
+Le profil généré est enregistré dans `calibration/weights.json` puis chargé automatiquement au démarrage.
+
+---
+
+## Détails du pipeline d’ingestion
+
+### Pipeline complet
 
 Ce projet permet d’analyser automatiquement un lot de CV (en PDF, DOCX ou image) afin d’en extraire des informations structurées, de les enrichir via un LLM (modèle d’intelligence artificielle), et de les indexer pour une recherche vectorielle efficace.
 
@@ -25,11 +81,11 @@ Ce point d’entrée accepte un **fichier ZIP** contenant plusieurs CV et effect
 ---
 
 ### 2️ Extraction du texte brut (`extract_text_from_cv`)
-- **PDF** → texte via **PyMuPDF** (avec fallback OCR via **pytesseract** si besoin).  
+- **PDF** → texte via **PyMuPDF** (avec fallback OCR multi-langue via **pytesseract** configurable).  
 - **DOCX** → extraction via **python-docx**.  
-- **Images (JPG, PNG, etc.)** → OCR avec **pytesseract**.  
-- Nettoyage léger du texte : suppression des espaces multiples, normalisation, etc.
-- Si le texte extrait est vide → CV **ignoré** (`"Skipping empty CV"`).
+- **Images (JPG, PNG, etc.)** → OCR avec contrôle de confiance (seuil `OCR_MIN_CONFIDENCE`).  
+- Ré-exécution OCR avec paramètres optimisés si la confiance est basse.  
+- Nettoyage du texte (normalisation unicode, ponctuation). CV vides ou non reconnaissables → ignorés.
 
 ---
 
@@ -43,6 +99,7 @@ Ce point d’entrée accepte un **fichier ZIP** contenant plusieurs CV et effect
   - Compétences comportementales (soft skills)
   - Langues, projets, etc.
 - Le JSON est **nettoyé et validé** par le modèle **Pydantic `CVInfo`**.
+- Post-traitements automatiques : déduplication des expériences, vérification des dates et ajout éventuel de `validationWarnings`.
 - En cas de JSON invalide ou schéma non conforme → CV **ignoré** et erreur **loggée**.
 
 ---
@@ -59,7 +116,7 @@ Ce point d’entrée accepte un **fichier ZIP** contenant plusieurs CV et effect
   - Le **niveau de séniorité** (`junior`, `mid`, `senior`)
   - Un **résumé professionnel clair**
   - Les **compétences techniques et comportementales**
-- Validation via **Pydantic `CVSummary`**.
+- Validation via **Pydantic `CVSummary`** + contrôles (valeur d’années non négative, duplication de phrases).
 - En cas d’échec → CV **ignoré** et erreur **signalée**.
 
 ---
@@ -76,11 +133,10 @@ Ce point d’entrée accepte un **fichier ZIP** contenant plusieurs CV et effect
 ---
 
 ### 7️ Encodage vectoriel
-- Le texte final est encodé avec le modèle **SentenceTransformer**  
-  (`all-MiniLM-L6-v2`, `normalize_embeddings=True`).
-- Le vecteur obtenu est :
-  - Converti en **liste JSON** (pour stockage Mongo)
-  - Inséré dans la collection `collection_embedded_data`.
+- Le texte final est encodé avec un modèle **SentenceTransformer** avancé (par défaut `all-mpnet-base-v2`) ou un modèle hébergé via Together.ai.
+- Les vecteurs sont normalisés puis :
+  - Convertis en **liste JSON** (pour stockage Mongo)
+  - Insérés dans la collection `collection_embedded_data`.
 
 ---
 
@@ -101,7 +157,7 @@ Ce point d’entrée accepte un **fichier ZIP** contenant plusieurs CV et effect
   - `filename`
   - `status` (`success`, `error`, `skipped`)
   - Messages ou raisons d’échec
-- Réponse **JSON** envoyée au client :
+- Réponse **JSON** envoyée au client (incluant les `validationWarnings` éventuels pour suivi de qualité) :
 
 ```json
 {

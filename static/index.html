@@ -606,12 +606,23 @@
                 <input type="number" id="minSimilarity" value="0.3" min="0" max="1" step="0.1" placeholder="Minimum similarity threshold">
                 <small style="color: #cccccc; font-size: 0.9em;">Filter out low-quality matches. Higher = more strict (default: 0.3)</small>
             </div>
+            <div class="form-group">
+                <label for="experienceWeight">Experience Weight:</label>
+                <input type="number" id="experienceWeight" value="1.0" min="0" max="5" step="0.1" placeholder="Relative importance of experience signals">
+                <small style="color: #cccccc; font-size: 0.9em;">Adjust the weight applied to experience signals in the ranking fusion (default: 1.0).</small>
+            </div>
+            <div class="form-group">
+                <label for="keywordWeights">Keyword Weights (JSON optional):</label>
+                <textarea id="keywordWeights" placeholder='Exemple: {"python": 2, "etl": 1.5, "spark": 1.2}'></textarea>
+                <small style="color: #cccccc; font-size: 0.9em;">Provide a JSON object to prioritize specific keywords. Leave empty to auto-detect from the query.</small>
+            </div>
             <button class="btn-primary" onclick="searchCandidates()">Search Candidates</button>
         </div>
 
         <!-- Endpoint Buttons -->
         <div class="button-group">
             <button class="btn-secondary" onclick="showUploadBatch()">Upload CV Batch</button>
+            <button class="btn-secondary" onclick="showUploadSingle()">Upload Single CV</button>
             <button class="btn-info" onclick="getStats()">Get Statistics</button>
             <button class="btn-warning" onclick="getAllCVs()">View All CVs</button>
             <button class="btn-danger" onclick="clearAllData()">Clear All Data</button>
@@ -622,7 +633,7 @@
         <div id="uploadModal" style="display: none; margin-top: 30px; background: rgba(255, 255, 255, 0.1); padding: 30px; border-radius: 15px;">
             <h2 style="color: #ffd700; margin-bottom: 20px;" id="uploadTitle">Upload File</h2>
             <div class="form-group">
-                <label for="fileInput">Select ZIP File:</label>
+                <label for="fileInput" id="fileInputLabel">Select a file to upload</label>
                 <input type="file" id="fileInput" accept=".zip">
             </div>
             <div style="display: flex; gap: 10px;">
@@ -706,30 +717,47 @@
             html += '<div class="results-summary">';
             html += '<h3>📊 Résumé de la recherche</h3>';
             html += '<div class="summary-stats">';
+            const combinedAvg = data.score_statistics ? (data.score_statistics.combined_average * 100).toFixed(1) : '0.0';
+            const rerankerAvg = data.score_statistics ? (data.score_statistics.reranker_probability_average * 100).toFixed(1) : '0.0';
             html += `<div class="summary-stat">
-                <div class="summary-stat-label">Candidats trouvés</div>
+                <div class="summary-stat-label">Candidats retenus</div>
                 <div class="summary-stat-value">${data.total_candidates_found || 0}</div>
             </div>`;
             html += `<div class="summary-stat">
-                <div class="summary-stat-label">Filtrés</div>
+                <div class="summary-stat-label">Filtrés (seuil)</div>
                 <div class="summary-stat-value">${data.total_filtered_out || 0}</div>
             </div>`;
+            if (data.preselection_size !== undefined) {
+                html += `<div class="summary-stat">
+                    <div class="summary-stat-label">Pré-sélection FAISS</div>
+                    <div class="summary-stat-value">${data.preselection_size}</div>
+                </div>`;
+            }
             if (data.score_statistics) {
                 html += `<div class="summary-stat">
-                    <div class="summary-stat-label">Score moyen</div>
-                    <div class="summary-stat-value">${(data.score_statistics.average * 100).toFixed(1)}%</div>
+                    <div class="summary-stat-label">Score combiné moyen</div>
+                    <div class="summary-stat-value">${combinedAvg}%</div>
                 </div>`;
                 html += `<div class="summary-stat">
-                    <div class="summary-stat-label">Score max</div>
-                    <div class="summary-stat-value">${(data.score_statistics.maximum * 100).toFixed(1)}%</div>
+                    <div class="summary-stat-label">Probabilité cross-encoder</div>
+                    <div class="summary-stat-value">${rerankerAvg}%</div>
                 </div>`;
             }
             html += '</div>';
             html += `<div style="color: #cccccc; font-size: 0.9em; margin-top: 10px;">
-                <strong>Requête:</strong> "${data.query || 'N/A'}" | 
-                <strong>Top K:</strong> ${data.top_k_requested || 'N/A'} | 
-                <strong>Seuil min:</strong> ${data.min_similarity_threshold || 'N/A'}
+                <strong>Requête:</strong> "${escapeHtml(data.query || 'N/A')}" |
+                <strong>Top K:</strong> ${data.top_k_requested || 'N/A'} |
+                <strong>Seuil min:</strong> ${data.min_similarity_threshold || 'N/A'} |
+                <strong>Poids exp.:</strong> ${data.experience_weight ?? 'N/A'}
             </div>`;
+            if (data.query_analysis) {
+                html += '<div style="color: #cccccc; font-size: 0.85em; margin-top: 8px;">';
+                html += `<strong>Mots-clés:</strong> ${data.query_analysis.keywords?.join(', ') || '—'} | `;
+                html += `<strong>Seniority ciblée:</strong> ${data.query_analysis.seniority_hint || '—'} | `;
+                html += `<strong>Années demandées:</strong> ${data.query_analysis.years_requested ?? '—'} | `;
+                html += `<strong>Domaines:</strong> ${data.query_analysis.focus_domains?.join(', ') || '—'}`;
+                html += '</div>';
+            }
             html += '</div>';
 
             // Candidates Grid
@@ -743,7 +771,7 @@
                 html += '<div class="no-results">';
                 html += '<div class="no-results-icon">🔍</div>';
                 html += '<h3>Aucun candidat trouvé</h3>';
-                html += '<p>Essayez de modifier vos critères de recherche ou de réduire le seuil de similarité minimum.</p>';
+                html += '<p>Essayez de modifier vos critères de recherche ou d’ajuster les poids.</p>';
                 html += '</div>';
             }
 
@@ -753,21 +781,22 @@
         function renderCandidateCard(rec) {
             const candidate = rec.candidate || {};
             const fullCv = candidate.full_cv_details || {};
-            const scorePercent = (rec.similarity_score * 100).toFixed(1);
-            const boostedScorePercent = (rec.boosted_similarity_score * 100).toFixed(1);
+            const combinedPercent = ((rec.combined_score ?? 0) * 100).toFixed(1);
+            const embeddingPercent = ((rec.embedding_component ?? 0) * 100).toFixed(1);
+            const rerankerPercent = ((rec.reranker_probability ?? 0) * 100).toFixed(1);
+            const keywordPercent = ((rec.keyword_component ?? 0) * 100).toFixed(1);
+            const experiencePercent = ((rec.experience_component ?? 0) * 100).toFixed(1);
+            const cosinePercent = ((rec.similarity_score ?? 0) * 100).toFixed(1);
+            const rerankerRaw = (rec.reranker_score ?? 0).toFixed(3);
+            const experienceSignalPercent = ((rec.experience_signal ?? 0) * 100).toFixed(1);
             
             let html = '<div class="candidate-card">';
-            
-            // Boost indicator
-            if (rec.boost > 0) {
-                html += `<div class="boost-indicator">+${(rec.boost * 100).toFixed(1)}% boost</div>`;
-            }
             
             // Header with rank and score
             html += '<div class="candidate-header">';
             html += `<div class="candidate-rank">#${rec.rank}</div>`;
             html += '<div class="candidate-scores">';
-            html += `<div class="similarity-score">${scorePercent}%</div>`;
+            html += `<div class="similarity-score">${combinedPercent}%</div>`;
             html += `<div class="score-quality ${rec.score_quality || 'low_relevance'}">`;
             const qualityLabels = {
                 'very_relevant': 'Très pertinent',
@@ -777,9 +806,15 @@
             };
             html += qualityLabels[rec.score_quality] || 'Non classé';
             html += '</div>';
-            if (rec.boost > 0) {
-                html += `<div style="font-size: 0.8em; color: #3498db; margin-top: 5px;">Boosté: ${boostedScorePercent}%</div>`;
-            }
+            html += `<div style="font-size: 0.8em; color: #cccccc; margin-top: 6px;">
+                <strong>Embedding:</strong> ${embeddingPercent}% |
+                <strong>Cross-encoder:</strong> ${rerankerPercent}%<br>
+                <strong>Mots-clés:</strong> ${keywordPercent}% |
+                <strong>Expérience:</strong> ${experiencePercent}%
+            </div>`;
+            html += `<div style="font-size: 0.75em; color: #aaaaaa; margin-top: 4px;">
+                Cosine: ${cosinePercent}% | Cross-encoder (logit): ${rerankerRaw}
+            </div>`;
             html += '</div>';
             html += '</div>';
 
@@ -801,7 +836,7 @@
             if (candidate.totalYearsExperience !== null && candidate.totalYearsExperience !== undefined) {
                 html += '<div class="info-section">';
                 html += '<div class="info-section-title">⏱️ Années d\'expérience</div>';
-                html += `<div class="info-section-content">${candidate.totalYearsExperience} ans</div>`;
+                html += `<div class="info-section-content">${candidate.totalYearsExperience} ans (signal: ${experienceSignalPercent}%)</div>`;
                 html += '</div>';
             }
 
@@ -839,7 +874,7 @@
 
             // Education
             const education = candidate.education || fullCv.education || [];
-            if (education.length > 0) {
+            if (education && education.length > 0) {
                 html += '<div class="info-section">';
                 html += '<div class="info-section-title">🎓 Formation</div>';
                 html += '<div class="info-section-content">';
@@ -873,8 +908,15 @@
             if (rec.keyword_matches && rec.keyword_matches.length > 0) {
                 html += '<div class="keyword-matches">';
                 html += '<div class="keyword-matches-title">✅ Mots-clés correspondants</div>';
-                rec.keyword_matches.forEach(keyword => {
-                    html += `<span class="keyword-tag">${escapeHtml(keyword)}</span>`;
+                rec.keyword_matches.forEach(keywordObj => {
+                    if (typeof keywordObj === 'string') {
+                        html += `<span class="keyword-tag">${escapeHtml(keywordObj)}</span>`;
+                    } else {
+                        const weightDisplay = typeof keywordObj.weight === 'number'
+                            ? keywordObj.weight.toFixed(2)
+                            : keywordObj.weight ?? 0;
+                        html += `<span class="keyword-tag">${escapeHtml(keywordObj.keyword || '')} (${weightDisplay})</span>`;
+                    }
                 });
                 html += '</div>';
             }
@@ -914,16 +956,41 @@
                 return;
             }
 
+            const experienceWeight = document.getElementById('experienceWeight').value;
+            const keywordWeightsRaw = document.getElementById('keywordWeights').value.trim();
+
             showLoading(true);
             try {
-                const formData = new FormData();
-                formData.append('query', query);
-                formData.append('top_k', topK);
-                formData.append('min_similarity', minSimilarity);
+                const payload = {
+                    query,
+                    top_k: Number(topK),
+                    min_similarity: Number(minSimilarity),
+                    experience_weight: Number(experienceWeight || 0)
+                };
+
+                if (keywordWeightsRaw) {
+                    try {
+                        const parsedWeights = JSON.parse(keywordWeightsRaw);
+                        if (typeof parsedWeights === 'object' && parsedWeights !== null) {
+                            payload.keyword_weights = parsedWeights;
+                        } else {
+                            showAlert('Keyword weights must be a valid JSON object.', 'error');
+                            showLoading(false);
+                            return;
+                        }
+                    } catch (parseError) {
+                        showAlert('Unable to parse keyword weights JSON: ' + parseError.message, 'error');
+                        showLoading(false);
+                        return;
+                    }
+                }
 
                 const response = await fetch(`${API_BASE}/recommend-candidates`, {
                     method: 'POST',
-                    body: formData
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();
@@ -932,10 +999,10 @@
                     showResults(data);
                     const msg = `Found ${data.total_candidates_found} candidates`;
                     const filteredMsg = data.total_filtered_out > 0 
-                        ? ` (${data.total_filtered_out} filtered out by threshold)`
+                        ? ` (${data.total_filtered_out} filtered by threshold)`
                         : '';
                     const scoreMsg = data.score_statistics 
-                        ? ` | Avg Score: ${data.score_statistics.average}`
+                        ? ` | Combined Avg: ${(data.score_statistics.combined_average * 100).toFixed(1)}%`
                         : '';
                     showAlert(msg + filteredMsg + scoreMsg, 'success');
                 } else {
@@ -948,15 +1015,34 @@
             }
         }
 
+        function configureFileInput(accept, placeholder) {
+            const fileInput = document.getElementById('fileInput');
+            fileInput.accept = accept;
+            fileInput.value = '';
+            const label = document.getElementById('fileInputLabel');
+            if (label) {
+                label.textContent = placeholder;
+            }
+        }
+
         function showUploadBatch() {
             currentEndpoint = 'upload-batch';
             document.getElementById('uploadTitle').textContent = 'Upload CV Batch (ZIP)';
+            configureFileInput('.zip', 'Select a ZIP file containing multiple CVs');
+            document.getElementById('uploadModal').style.display = 'block';
+        }
+
+        function showUploadSingle() {
+            currentEndpoint = 'upload-single';
+            document.getElementById('uploadTitle').textContent = 'Upload Single CV (PDF, DOCX, Image)';
+            configureFileInput('.pdf,.doc,.docx,.png,.jpg,.jpeg,.tiff', 'Select a single CV file');
             document.getElementById('uploadModal').style.display = 'block';
         }
 
         function showDataPreprocessing() {
             currentEndpoint = 'data-preprocessing';
             document.getElementById('uploadTitle').textContent = 'Data Preprocessing - Extract Phone Numbers (ZIP)';
+            configureFileInput('.zip', 'Select a ZIP file for phone extraction');
             document.getElementById('uploadModal').style.display = 'block';
         }
 
@@ -975,19 +1061,35 @@
                 return;
             }
 
-            if (!file.name.endsWith('.zip')) {
+            const isZipEndpoint = currentEndpoint === 'upload-batch' || currentEndpoint === 'data-preprocessing';
+
+            if (isZipEndpoint && !file.name.toLowerCase().endsWith('.zip')) {
                 showAlert('Please select a ZIP file', 'error');
                 return;
+            }
+
+            if (!isZipEndpoint) {
+                const allowedExtensions = ['.pdf', '.doc', '.docx', '.png', '.jpg', '.jpeg', '.tiff'];
+                const lowerName = file.name.toLowerCase();
+                const hasAllowedExt = allowedExtensions.some(ext => lowerName.endsWith(ext));
+                if (!hasAllowedExt) {
+                    showAlert('Please select a valid CV file (PDF, DOC/DOCX, image)', 'error');
+                    return;
+                }
             }
 
             showLoading(true);
             try {
                 const formData = new FormData();
-                formData.append('zip_file', file);
+                const fieldName = isZipEndpoint ? 'zip_file' : 'file';
+                formData.append(fieldName, file);
 
-                const endpoint = currentEndpoint === 'data-preprocessing' 
-                    ? `${API_BASE}/data-preprocessing` 
-                    : `${API_BASE}/upload-cv-batch`;
+                let endpoint = `${API_BASE}/upload-cv-batch`;
+                if (currentEndpoint === 'data-preprocessing') {
+                    endpoint = `${API_BASE}/data-preprocessing`;
+                } else if (currentEndpoint === 'upload-single') {
+                    endpoint = `${API_BASE}/upload-cv`;
+                }
 
                 const response = await fetch(endpoint, {
                     method: 'POST',
@@ -998,7 +1100,25 @@
                 
                 if (response.ok) {
                     showResults(data);
-                    showAlert('File uploaded successfully!', 'success');
+                    if (currentEndpoint === 'upload-single') {
+                        const result = data?.results?.[0] || {};
+                        const status = result.status || data?.status;
+                        let message = 'Single CV processed successfully!';
+
+                        if (status === 'success') {
+                            const idPart = result.cv_id ? ` (ID: ${result.cv_id})` : '';
+                            message = `Single CV processed successfully${idPart}`;
+                            showAlert(message, 'success');
+                        } else if (status === 'skipped') {
+                            message = result.reason || data?.message || 'CV skipped.';
+                            showAlert(message, 'warning');
+                        } else {
+                            message = result.error || data?.message || 'CV processed with warnings.';
+                            showAlert(message, 'warning');
+                        }
+                    } else {
+                        showAlert('File uploaded successfully!', 'success');
+                    }
                     closeUploadModal();
                 } else {
                     showAlert(data.detail || 'Error uploading file', 'error');

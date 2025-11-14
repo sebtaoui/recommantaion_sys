@@ -2,13 +2,37 @@ from app.core.config import settings
 from openai import OpenAI
 import json
 import re
+import httpx
+
+# Configuration des timeouts pour éviter les erreurs de connexion
+_timeout = httpx.Timeout(60.0, connect=10.0)  # 60s total, 10s pour la connexion
+_http_client = httpx.Client(timeout=_timeout, limits=httpx.Limits(max_connections=10, max_keepalive_connections=5))
 
 client = OpenAI(
     api_key=settings.together_ai_API_KEY,
-    base_url=settings.together_ai_BASE_URL
+    base_url=settings.together_ai_BASE_URL,
+    http_client=_http_client,
+    max_retries=2
 )
 
 MODEL = settings.together_ai_MODEL
+
+
+def _clean_null_strings(obj):
+    """
+    Recursively clean 'null' strings and convert them to None.
+    This fixes cases where LLM returns the string 'null' instead of null value.
+    """
+    if isinstance(obj, dict):
+        return {k: _clean_null_strings(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_clean_null_strings(item) for item in obj]
+    elif isinstance(obj, str):
+        # Convert string 'null' to None
+        if obj.lower() == 'null':
+            return None
+        return obj
+    return obj
 
 
 def safe_json_parse(raw_response: str, fallback: dict = None) -> dict:
@@ -16,6 +40,7 @@ def safe_json_parse(raw_response: str, fallback: dict = None) -> dict:
     Cleans and safely parses JSON returned by LLM.
     - Removes markdown or extra text around JSON.
     - Handles incomplete JSON by trying to repair it.
+    - Converts string 'null' values to None.
     - Returns fallback dict if parsing fails.
     """
     if fallback is None:
@@ -40,8 +65,11 @@ def safe_json_parse(raw_response: str, fallback: dict = None) -> dict:
             else:
                 cleaned = cleaned.strip()
 
-        # Try to parse
-        return json.loads(cleaned)
+        # Parse JSON
+        parsed = json.loads(cleaned)
+        # Clean 'null' strings recursively
+        cleaned_parsed = _clean_null_strings(parsed)
+        return cleaned_parsed
     except json.JSONDecodeError as e:
         # Try to repair incomplete JSON by closing brackets/braces
         try:
@@ -87,6 +115,8 @@ def safe_json_parse(raw_response: str, fallback: dict = None) -> dict:
             
             # Try parsing the repaired JSON
             repaired_result = json.loads(cleaned)
+            # Clean 'null' strings recursively
+            repaired_result = _clean_null_strings(repaired_result)
             print(f"[✓ JSON Repaired] Successfully repaired incomplete JSON")
             return repaired_result
         except Exception as repair_error:
@@ -103,6 +133,8 @@ def safe_json_parse(raw_response: str, fallback: dict = None) -> dict:
                         open_sq = test_json.count('[') - test_json.count(']')
                         test_json += ']' * open_sq + '}' * open_br
                         parsed = json.loads(test_json)
+                        # Clean 'null' strings recursively
+                        parsed = _clean_null_strings(parsed)
                         print(f"[✓ JSON Partially Repaired] Extracted valid JSON subset")
                         return parsed
                     except:
@@ -128,6 +160,9 @@ You are an intelligent assistant that extracts structured data from a CV text.
 - If information is missing, use empty string "", empty list [], or null.
 - Translate all extracted values to English.
 - For professionalExperience, try to calculate years of experience from dates if possible.
+- Order professionalExperience entries in reverse chronological order (most recent first).
+- Merge duplicate roles (same company + position + identical dates) instead of repeating them.
+- If dates are missing, explicitly set `"dates": null` and mention the absence in the description.
 
 Follow exactly this structure:
 
@@ -149,13 +184,20 @@ Follow exactly this structure:
 Here is the CV text:
 \"\"\"{text_cv}\"\"\"
 """
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2
-    )
-    raw_response = response.choices[0].message.content.strip()
-    return safe_json_parse(raw_response)
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2
+        )
+        raw_response = response.choices[0].message.content.strip()
+        return safe_json_parse(raw_response)
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError, ConnectionResetError) as e:
+        print(f"[API Error] Connection error in extract_cv_info_via_llm: {e}")
+        return {}
+    except Exception as e:
+        print(f"[API Error] Unexpected error in extract_cv_info_via_llm: {e}")
+        return {}
 
 
 # ============================================================
@@ -163,34 +205,36 @@ Here is the CV text:
 # ============================================================
 def analyze_cv_for_experience(text_cv: str, cv_id: str):
     prompt = f"""
-You are an intelligent assistant specialized in analyzing CVs with a **strong focus on professional experience**.
+You are an intelligent analyst who evaluates CVs with a **strong focus on professional experience**.
 
-Your goal is to extract key structured data and translate all extracted text into **clear English**.
+Your mission is to build an objective, insight-driven synthesis in **clear English** using only the facts contained in the CV text below.
 
-### ⚙️ **Instructions**
-- The input text below is a CV (resumé).
-- Return **ONLY** a valid **raw JSON object** — no markdown, no comments, no text outside the JSON.
-- If information is missing, use empty string "", empty list [], or null.
-- Translate all extracted fields into **English**, keeping professional terms accurate.
-- **FOCUS HEAVILY ON PROFESSIONAL EXPERIENCE** - this is the most important part.
+### ⚙️ Core Rules
+- Return **ONLY** a valid **raw JSON object** — no markdown, comments, or extra text.
+- If a value is missing, use "" (empty string), [] (empty list), or null.
+- Translate all extracted fields into English while keeping domain terminology precise.
+- **Never reuse or lightly rephrase the candidate's own summary or headline.** Construct your own expert summary derived from the detailed experience you extract.
+- Always cross-check dates and responsibilities. Highlight any inconsistencies (overlapping dates, missing years) directly in the summary text.
+- Keep professionalExperience narratives in strict reverse chronological order (latest role first).
 
-### 🎓 **Special rules for experience analysis**
-- **totalYearsExperience**: Calculate total years of professional work experience (numeric value).
-- **experienceLevel**: Infer based on years of experience:
+### 🎯 Experience Analysis Requirements
+- **totalYearsExperience**: Estimate cumulative professional experience in years (numeric). Use partial years when needed.
+- **experienceLevel**: Infer from the experience span:
   - junior: 0-2 years
   - mid: 2-5 years
   - senior: 5+ years
-- **experienceDetails**: Write a detailed summary of ALL professional experience, including:
-  - All companies worked at
-  - All positions held
-  - Key technologies used in each role
-  - Notable achievements and responsibilities
-  - Duration at each company
-- **summaryText**: Write a concise professional summary highlighting experience and expertise.
-- **hardSkills**: List ALL technical skills, tools, frameworks, and technologies mentioned.
-- **softSkills**: Include interpersonal or behavioral strengths.
+- **experienceDetails**: Produce a rich narrative organised in reverse chronological order. For EACH role include:
+  - Company and position
+  - Rough duration (even if approximate)
+  - Core missions, achievements, and measurable impact
+  - Technologies, tools, or methodologies used
+  - Context (industry, team size, project type) when available
+- **summaryText**: Craft an analytical overview (6-8 sentences). Highlight seniority, scope, strongest competencies, industries, and notable outcomes. Mention gaps or uncertainties if detected.
+- **hardSkills**: Extract every explicit technical skill, language, tool, or framework.
+- **softSkills**: Capture behavioural strengths (leadership, communication, etc.) that are evident in the text.
+- **education**: Summarize the highest or most recent education in one sentence (institution + degree + year when possible).
 
-### 🧩 **Expected JSON Structure**
+### 🧩 Expected JSON Structure
 
 {{
   "cv_id": "{cv_id}",
@@ -203,16 +247,23 @@ Your goal is to extract key structured data and translate all extracted text int
   "experienceDetails": "string"
 }}
 
-### 📄 **Here is the CV text:**
+### 📄 CV Text
 \"\"\"{text_cv}\"\"\"
 """
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2
-    )
-    raw_response = response.choices[0].message.content.strip()
-    return safe_json_parse(raw_response, fallback={"cv_id": cv_id})
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2
+        )
+        raw_response = response.choices[0].message.content.strip()
+        return safe_json_parse(raw_response, fallback={"cv_id": cv_id})
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError, ConnectionResetError) as e:
+        print(f"[API Error] Connection error in analyze_cv_for_experience: {e}")
+        return {"cv_id": cv_id}
+    except Exception as e:
+        print(f"[API Error] Unexpected error in analyze_cv_for_experience: {e}")
+        return {"cv_id": cv_id}
 
 
 # ============================================================
@@ -234,10 +285,17 @@ Structure:
 CV TEXT:
 {cv_text}
 """
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0
-    )
-    raw_response = response.choices[0].message.content.strip()
-    return safe_json_parse(raw_response, fallback={"phone_number": None})
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+        raw_response = response.choices[0].message.content.strip()
+        return safe_json_parse(raw_response, fallback={"phone_number": None})
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError, ConnectionResetError) as e:
+        print(f"[API Error] Connection error in extract_phone_number_from_text: {e}")
+        return {"phone_number": None}
+    except Exception as e:
+        print(f"[API Error] Unexpected error in extract_phone_number_from_text: {e}")
+        return {"phone_number": None}

@@ -18,3 +18,4 @@ pytesseract
 pdf2image
 
 openai
+httpx
